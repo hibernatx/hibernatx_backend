@@ -5,11 +5,11 @@ pub mod tcp_request {
     #[derive(Serialize)]
     #[serde(tag = "action_type")]
     pub enum TCPRequest {
-        get(Get),
-        set(Set),
-        add_node(AddNode),
-        update_node(UpdateNode),
-        remove_node(RemoveNode),
+        Get(Get),
+        Set(Set),
+        AddNode(AddNode),
+        UpdateNode(UpdateNode),
+        RemoveNode(RemoveNode),
     }
 
     #[derive(Serialize)]

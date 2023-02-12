@@ -37,9 +37,23 @@ fn rec_json<'r>(request_json: String) -> Json<String> {
 fn get_status(request: client_request::PCPGetStatus) -> json_error::Result<Json<String>> {
     //let request_data: Request::PCPGetStatus = serde_json::from_value(request.data)?;
 
-    let request_tcp = TCPRequest::get( tcp_request::Get { nodes: String::from("*") });
+    let request_tcp = TCPRequest::Get( tcp_request::Get { nodes: String::from("*") });
     let request_json = Json(serde_json::to_string(&request_tcp)?);
-    let return_json: TCPReturn = serde_json::from_str(&request_node(&get_address(&request.room)?, request_json)?)?;
+    let address = match get_address(&request.room) {
+        Ok(addr) => addr,
+        Err(_) =>  {
+            let return_status = Response::PCPReturnStatus(client_response::PCPReturnStatus { room: request.room, result: String::from("not_found"), status: Map::new() });
+            return Ok(Json(serde_json::to_string(&return_status)?));
+        },
+    };
+    let return_string = match request_node(&address, request_json) {
+        Ok(string) => string,
+        Err(_) => {
+            let return_status = Response::PCPReturnStatus(client_response::PCPReturnStatus { room: request.room, result: String::from("node_communication_failed"), status: Map::new() });
+            return Ok(Json(serde_json::to_string(&return_status)?));
+        },
+    };
+    let return_json: TCPReturn = serde_json::from_str(&return_string)?;
 
     let return_status = match return_json {
         TCPReturn::NodeList(node_list) => Response::PCPReturnStatus(client_response::PCPReturnStatus { room: node_list.device_id, result: String::from("success"), status: node_list.nodes }),
@@ -56,9 +70,23 @@ fn book_pc(request: client_request::PCPBookPC) -> json_error::Result<Json<String
     // TODO : Check if PC already booked
     let mut node_map = Map::new();
     node_map.insert(String::from(&request.pc), serde_json::to_value(String::from("on"))?);
-    let request_tcp = TCPRequest::set(tcp_request::Set { nodes: node_map });
+    let request_tcp = TCPRequest::Set(tcp_request::Set { nodes: node_map });
     let request_json = Json(serde_json::to_string(&request_tcp)?);
-    let return_json: TCPReturn = serde_json::from_str(&request_node(&get_address(&request.room)?, request_json)?)?;
+    let address = match get_address(&request.room) {
+        Ok(addr) => addr,
+        Err(_) =>  {
+            let return_status = Response::PCPBookResult(client_response::PCPBookResult { room: request.room, result: String::from("not_found") });
+            return Ok(Json(serde_json::to_string(&return_status)?));
+        },
+    };
+    let return_string = match request_node(&address, request_json) {
+        Ok(string) => string,
+        Err(_) => {
+            let return_status = Response::PCPBookResult(client_response::PCPBookResult { room: request.room, result: String::from("node_communication_failed") });
+            return Ok(Json(serde_json::to_string(&return_status)?));
+        },
+    };
+    let return_json: TCPReturn = serde_json::from_str(&return_string)?;
 
     let return_status = match return_json {
         TCPReturn::NodeList(mut node_list) => match node_list.nodes.remove(&request.pc) {
@@ -197,7 +225,7 @@ fn setup() {
 }
 
 fn add_node(device_id: String, node_id: String, hostname: String, mac_address: String) -> json_error::Result<()>{
-    let request_tcp = TCPRequest::add_node(tcp_request::AddNode { node_id, hostname, mac_address });
+    let request_tcp = TCPRequest::AddNode(tcp_request::AddNode { node_id, hostname, mac_address });
     let request_json = Json(serde_json::to_string(&request_tcp)?);
     let return_json: tcp_return::Status = serde_json::from_str(&request_node(&get_address(&device_id)?, request_json)?)?;
     match return_json.status.as_str() {
@@ -207,7 +235,7 @@ fn add_node(device_id: String, node_id: String, hostname: String, mac_address: S
 }
 
 fn update_node(device_id: String, node_id: String, hostname: String, mac_address: String) -> json_error::Result<()>{
-    let request_tcp = TCPRequest::update_node(tcp_request::UpdateNode { node_id, hostname, mac_address });
+    let request_tcp = TCPRequest::UpdateNode(tcp_request::UpdateNode { node_id, hostname, mac_address });
     let request_json = Json(serde_json::to_string(&request_tcp)?);
     let return_json: tcp_return::Status = serde_json::from_str(&request_node(&get_address(&device_id)?, request_json)?)?;
     match return_json.status.as_str() {
@@ -217,7 +245,7 @@ fn update_node(device_id: String, node_id: String, hostname: String, mac_address
 }
 
 fn remove_node(device_id: String, node_id: String) -> json_error::Result<()>{
-    let request_tcp = TCPRequest::remove_node(tcp_request::RemoveNode { node_id });
+    let request_tcp = TCPRequest::RemoveNode(tcp_request::RemoveNode { node_id });
     let request_json = Json(serde_json::to_string(&request_tcp)?);
     let return_json: tcp_return::Status = serde_json::from_str(&request_node(&get_address(&device_id)?, request_json)?)?;
     match return_json.status.as_str() {
