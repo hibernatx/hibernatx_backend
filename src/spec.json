@@ -12,8 +12,9 @@
 
 // SERVER -> CLIENT response
 {
-    "command": "pcp_return_status",
+    "command": "PCPReturnStatus",
     "room": [ROOM_ID],
+    "result": <"success","room_not_found","node_error">
     "status": {
         "A1": "off",
         "A2": "on",
@@ -22,7 +23,7 @@
 }
 
 {
-    "command": "pcp_book_result",
+    "command": "PCPBookResult",
     "room": [ROOM_ID],
     "result": <"success","already_booked","not_found","node_error(pc does not change)">
 }

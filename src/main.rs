@@ -8,22 +8,13 @@ use serde_json::{Map, Value};
 use serde::{Serialize, Deserialize};
 use hibernatx_backend::{tcp_request::TCPRequest, tcp_return::TCPReturn, client_request::Request, client_response::Response};
 use hibernatx_backend::{client_request, client_response, tcp_request};
-
-#[get("/")]
-fn index() -> &'static str {
-    "Hello, world!"
-}
-
-#[derive(Serialize)]
-struct JsonError {
-    error: String,
-}
+use hibernatx_backend::json_error::{self, JsonError};
 
 #[post("/", data = "<request_json>")]
 fn rec_json<'r>(request_json: String) -> Json<String> {
     let request: Request = match serde_json::from_str(&request_json) {
         Ok(json) => json,
-        Err(e) => return Json(format!(r#"{{"error": "{}"}}"#, e.to_string())),
+        Err(e) => return JsonError::new(&e.to_string()).to_json(),
     };
 
     match request {
@@ -31,20 +22,20 @@ fn rec_json<'r>(request_json: String) -> Json<String> {
             //send request to node
             match get_status(request_status) {
                 Ok(json) => json,
-                Err(e) => return Json(format!(r#"{{"error": "{}"}}"#, e.to_string())),
+                Err(e) => return e.to_json(),
             }
         },
         Request::PCPBookPC(request_pc) => {
             //send request to node
             match book_pc(request_pc) {
                 Ok(json) => json,
-                Err(e) => return Json(format!(r#"{{"error": "{}"}}"#, e.to_string())),
+                Err(e) => return e.to_json(),
             }
         },
     }
 }
 
-fn get_status(request: client_request::PCPGetStatus) -> io::Result<Json<String>> {
+fn get_status(request: client_request::PCPGetStatus) -> json_error::Result<Json<String>> {
     //let request_data: Request::PCPGetStatus = serde_json::from_value(request.data)?;
 
     let tcp_request = TCPRequest::get( tcp_request::Get { nodes: String::from("*") });
@@ -52,8 +43,8 @@ fn get_status(request: client_request::PCPGetStatus) -> io::Result<Json<String>>
     let return_json: TCPReturn = serde_json::from_str(&request_node(&get_address(&request.room)?, request_json)?)?;
 
     let return_status = match return_json {
-        TCPReturn::NodeList(node_list) => Response::PCPReturnStatus(client_response::PCPReturnStatus { room: node_list.device_id, status: node_list.nodes }),
-        TCPReturn::Status(status) => return Err(io::Error::new(io::ErrorKind::Other, status.status.as_str())),
+        TCPReturn::NodeList(node_list) => Response::PCPReturnStatus(client_response::PCPReturnStatus { room: node_list.device_id, result: String::from("success"), status: node_list.nodes }),
+        TCPReturn::Status(status) => return Err(JsonError::new(status.status.as_str())),
     };
 
     // TODO : Sanity check device_id against
@@ -62,7 +53,7 @@ fn get_status(request: client_request::PCPGetStatus) -> io::Result<Json<String>>
     Ok(return_status_json)
 }
 
-fn book_pc(request: client_request::PCPBookPC) -> io::Result<Json<String>> {    
+fn book_pc(request: client_request::PCPBookPC) -> json_error::Result<Json<String>> {    
     // TODO : Check if PC already booked
     let mut node_map = Map::new();
     node_map.insert(String::from(&request.pc), serde_json::to_value(String::from("on"))?);
@@ -71,7 +62,15 @@ fn book_pc(request: client_request::PCPBookPC) -> io::Result<Json<String>> {
     let return_json: TCPReturn = serde_json::from_str(&request_node(&get_address(&request.room)?, request_json)?)?;
 
     let return_status = match return_json {
-        TCPReturn::NodeList(node_list) => Response::PCPBookResult(client_response::PCPBookResult { room: node_list.device_id, result: String::from("success") }),
+        TCPReturn::NodeList(mut node_list) => match node_list.nodes.remove(&request.pc) {
+            Some(state) => match serde_json::from_value::<String>(state)?.as_str() {
+                "on" => Response::PCPBookResult(client_response::PCPBookResult { room: node_list.device_id, result: String::from("success") }),
+                "off" => Response::PCPBookResult(client_response::PCPBookResult { room: node_list.device_id, result: String::from("node_error") }),
+                "already_on" => Response::PCPBookResult(client_response::PCPBookResult { room: node_list.device_id, result: String::from("already_booked") }),
+                _ => Response::PCPBookResult(client_response::PCPBookResult { room: node_list.device_id, result: String::from("not_found") }),
+            },
+            _ => Response::PCPBookResult(client_response::PCPBookResult { room: node_list.device_id, result: String::from("not_found") }),
+        }
         TCPReturn::Status(status) => Response::PCPBookResult(client_response::PCPBookResult { room: status.device_id, result: String::from("not_found") }),
     };
 
@@ -82,7 +81,7 @@ fn book_pc(request: client_request::PCPBookPC) -> io::Result<Json<String>> {
     Ok(return_status_json)
 }
 
-fn request_node(addr: &str, request_json: Json<String>) -> io::Result<String> {
+fn request_node(addr: &str, request_json: Json<String>) -> json_error::Result<String> {
     let mut stream = TcpStream::connect(addr)?;
     println!("Writing {} to python server", &request_json.to_string());
     stream.write(&request_json.to_string().as_bytes())?;
@@ -95,14 +94,14 @@ fn request_node(addr: &str, request_json: Json<String>) -> io::Result<String> {
     Ok(buf)
 }
 
-fn get_address(device_id: &str) -> io::Result<String> {
+fn get_address(device_id: &str) -> json_error::Result<String> {
 
     let contents = fs::read_to_string("address_table.json")?;
     let mut address_map: Map<String,Value> = serde_json::from_str(&contents)?;
 
     let address = match address_map.remove(device_id) {
         Some(addr) => addr,
-        None => return Err(io::Error::new(io::ErrorKind::Other, "Room not found in address lookup table")),
+        None => return Err(JsonError::new("Room not found in address lookup table")),
     };
     let address: String = serde_json::from_value(address)?;
     println!("{}", &address);
@@ -113,7 +112,6 @@ fn get_address(device_id: &str) -> io::Result<String> {
 #[launch]
 fn rocket() -> _ {
     rocket::build()
-        .mount("/", routes![index])
         .mount("/", routes![rec_json])
 }
 
