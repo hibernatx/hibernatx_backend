@@ -132,9 +132,13 @@ pub mod json_error {
         pub fn to_json(&self) -> Json<String> {
             let err_string = match serde_json::to_string(self) {
                 Ok(err) => err,
-                Err(e) => String::from(r#"{"error": "error parsing error"}"#),
+                Err(_) => String::from(r#"{"error": "error parsing error"}"#),
             };
             Json(err_string)
+        }
+
+        pub fn to_string(&self) -> String {
+            String::from(&self.error)
         }
     }
 
