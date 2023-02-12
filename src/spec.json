@@ -1,0 +1,29 @@
+// CLIENT -> SERVER request
+{
+    "command": "PCPGetStatus",
+    "room": [ROOM_ID]
+}
+
+{
+    "command": "PCPBookPC",
+    "room": [ROOM_ID],
+    "pc": [PC_ID]
+}
+
+// SERVER -> CLIENT response
+{
+    "command": "pcp_return_status",
+    "room": [ROOM_ID],
+    "status": {
+        "A1": "off",
+        "A2": "on",
+        "B1": "off"
+    }
+}
+
+{
+    "command": "pcp_book_result",
+    "room": [ROOM_ID],
+    "result": <"success","already_booked","not_found","node_error(pc does not change)">
+}
+
