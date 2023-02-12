@@ -9,6 +9,38 @@ use hibernatx_backend::{tcp_request::TCPRequest, tcp_return::TCPReturn, client_r
 use hibernatx_backend::{client_request, client_response, tcp_request, tcp_return};
 use hibernatx_backend::json_error::{self, JsonError};
 
+use rocket::http::Header;
+use rocket::fairing::{Fairing, Info, Kind};
+
+pub struct CORS;
+
+#[rocket::async_trait]
+impl Fairing for CORS {
+    fn info(&self) -> Info {
+        Info {
+            name: "Add CORS headers to responses",
+            kind: Kind::Response
+        }
+    }
+
+    async fn on_response<'r>(&self, _request: &'r rocket::Request<'_>, response: &mut rocket::Response<'r>) {
+        response.set_header(Header::new("Access-Control-Allow-Origin", "*"));
+        response.set_header(Header::new("Access-Control-Allow-Methods", "POST, GET, PATCH, OPTIONS"));
+        response.set_header(Header::new("Access-Control-Allow-Headers", "*"));
+        response.set_header(Header::new("Access-Control-Allow-Credentials", "true"));
+    }
+}
+
+#[get("/")]
+fn index() -> &'static str {
+    "Hello world!"
+}
+
+#[options("/")]
+fn opts() -> &'static str {
+    "Hello world!"
+}
+
 #[post("/", data = "<request_json>")]
 fn rec_json<'r>(request_json: String) -> Json<String> {
     let request: Request = match serde_json::from_str(&request_json) {
@@ -146,7 +178,10 @@ async fn main() -> Result<(), rocket::Error> {
         }
     }
     let _rocket = rocket::build()
+        .attach(CORS)
         .mount("/", routes![rec_json])
+        .mount("/", routes![index])
+        .mount("/", routes![opts])
         .launch()
         .await?;
     Ok(())
